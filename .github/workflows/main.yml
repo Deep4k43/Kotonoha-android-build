@@ -44,6 +44,7 @@ jobs:
           V=$(grep distributionUrl Android/gradle/wrapper/gradle-wrapper.properties | sed -E 's/.*gradle-([0-9.]+)-(bin|all)\.zip.*/\1/')
           echo "Gradle version: $V"
           mkdir /tmp/w && cd /tmp/w
+          touch settings.gradle
           gradle wrapper --gradle-version "$V"
           cp /tmp/w/gradle/wrapper/gradle-wrapper.jar "$GITHUB_WORKSPACE/Android/gradle/wrapper/gradle-wrapper.jar"
 
