@@ -51,8 +51,27 @@ jobs:
       - name: Build example debug APK
         working-directory: Android
         run: |
+          set -o pipefail
           chmod +x gradlew
-          ./gradlew :app:assembleExampleDebug -Pabis=arm64-v8a -PbundleGameAssets=false --stacktrace
+          ./gradlew :app:assembleExampleDebug -Pabis=arm64-v8a -PbundleGameAssets=false --stacktrace 2>&1 | tee build.log
+
+      - name: Show errors in summary
+        if: failure()
+        run: |
+          {
+            echo '### What went wrong'
+            echo '```'
+            grep -A15 "What went wrong" Android/build.log | head -50
+            echo '```'
+            echo '### Error lines'
+            echo '```'
+            grep -i -E "CMake Error|error:|fatal|vcpkg.*(error|fail)|failed with|Could not|not found" Android/build.log | head -40
+            echo '```'
+            echo '### Last 25 lines'
+            echo '```'
+            tail -25 Android/build.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Save vcpkg cache
         if: always()
@@ -60,6 +79,16 @@ jobs:
         with:
           path: ~/.cache/vcpkg
           key: vcpkg-${{ github.run_id }}
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            Android/build.log
+            Android/build/vcpkg/**/buildtrees/**/*.log
+          if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4
         with:
