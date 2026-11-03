@@ -1,0 +1,37 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build pkg-config
+
+      - name: List Gradle tasks
+        working-directory: Android
+        run: |
+          chmod +x gradlew
+          ./gradlew tasks --all | grep -i assemble || true
+
+      - name: Build example debug APK
+        working-directory: Android
+        run: ./gradlew assembleExampleDebug --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kotonoha-apk
+          path: Android/**/build/outputs/apk/**/*.apk
