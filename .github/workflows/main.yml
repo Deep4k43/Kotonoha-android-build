@@ -6,6 +6,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
         with:
@@ -16,23 +17,50 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Accept Android licenses
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+      - name: Install Android SDK parts
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "cmake;3.22.1" "ndk;28.2.13676358"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
 
       - name: Install build tools
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build pkg-config
+        run: sudo apt-get update && sudo apt-get install -y ninja-build pkg-config autoconf automake libtool nasm yasm
 
-      - name: List Gradle tasks
-        working-directory: Android
+      - name: Set up vcpkg
         run: |
-          chmod +x gradlew
-          ./gradlew tasks --all | grep -i assemble || true
+          git clone https://github.com/microsoft/vcpkg "$HOME/vcpkg"
+          "$HOME/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+          echo "VCPKG_ROOT=$HOME/vcpkg" >> "$GITHUB_ENV"
+
+      - name: Restore vcpkg cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/vcpkg
+          key: vcpkg-${{ github.run_id }}
+          restore-keys: vcpkg-
+
+      - name: Restore Gradle wrapper jar
+        run: |
+          V=$(grep distributionUrl Android/gradle/wrapper/gradle-wrapper.properties | sed -E 's/.*gradle-([0-9.]+)-(bin|all)\.zip.*/\1/')
+          echo "Gradle version: $V"
+          mkdir /tmp/w && cd /tmp/w
+          gradle wrapper --gradle-version "$V"
+          cp /tmp/w/gradle/wrapper/gradle-wrapper.jar "$GITHUB_WORKSPACE/Android/gradle/wrapper/gradle-wrapper.jar"
 
       - name: Build example debug APK
         working-directory: Android
-        run: ./gradlew assembleExampleDebug --stacktrace
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleExampleDebug -Pabis=arm64-v8a -PbundleGameAssets=false --stacktrace
+
+      - name: Save vcpkg cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/vcpkg
+          key: vcpkg-${{ github.run_id }}
 
       - uses: actions/upload-artifact@v4
         with:
           name: kotonoha-apk
-          path: Android/**/build/outputs/apk/**/*.apk
+          path: Android/app/build/outputs/apk/**/*.apk
